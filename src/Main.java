@@ -7,6 +7,7 @@
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -14,6 +15,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Scanner;
 
 /**
@@ -28,8 +30,8 @@ public class Main {
         final Scanner scanner = new Scanner(System.in);
         final int numberOfRows = scanner.nextInt();
         scanner.nextLine();
-        final ArrayList<Price> prices = new ArrayList<>();
-        final ArrayList<Measurement> measurements = new ArrayList<>();
+        final ArrayList<Price> prices = new ConsequitivePriceArrayList();
+        final ArrayList<Measurement> measurements = new ConsequitiveMeasurementsArrayList();
         for (int i = 0; i < numberOfRows; i++) {
             final String dataLine = scanner.nextLine();
             final char dataType = dataLine.charAt(0);
@@ -66,6 +68,46 @@ public class Main {
         return new Measurement(quantity, startDate, endDate);
     }
 
+    static final class ConsequitiveMeasurementsArrayList extends ArrayList<Measurement> {
+
+        private Measurement previous;
+
+        @Override
+        public boolean add(Measurement measurement) {
+            if (previous != null) {
+                validateConsequitive(measurement);
+            }
+            previous = measurement;
+            return super.add(measurement);
+        }
+
+        private void validateConsequitive(Measurement newMeasurement) {
+            if (newMeasurement.getStart().minusSeconds(1).compareTo(previous.getEnd()) != 0) {
+                throw new RuntimeException("Measurement periods not consequitive!" + newMeasurement);
+            }
+        }
+    }
+
+    static final class ConsequitivePriceArrayList extends ArrayList<Price> {
+
+        private Price previous;
+
+        @Override
+        public boolean add(Price price) {
+            if (previous != null) {
+                validateConsequitive(price);
+            }
+            previous = price;
+            return super.add(price);
+        }
+
+        private void validateConsequitive(Price newPrice) {
+            if (newPrice.getStart().minusDays(1).compareTo(previous.getEnd()) != 0) {
+                throw new RuntimeException("Price periods not consequitive!");
+            }
+        }
+    }
+
     private static Price parsePrice(String dataLine) {
         final String[] components = dataLine.split(SEPARATOR);
         final String startDateStr = components[1];
@@ -83,6 +125,8 @@ public class Main {
     static class ProportionalMeasurementDistributor {
 
         private final static String ZONE_SOFIA = "Europe/Sofia";
+        private static final int SCALE = 2;
+        private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_DOWN;
 
         /**
          * Proportionally distributes the measurements based on the prices.
@@ -105,19 +149,19 @@ public class Main {
             for (Measurement measurement : measurements) {
                 final List<Price> pricesForMeasurement = filterPricesByMeasurementIntersection(measurement, prices);
                 ZonedDateTime lastDateTime = measurement.getStart();
+                final long measurementDays = daysInPeriodInclusive(measurement.getStart().truncatedTo(ChronoUnit.DAYS),
+                        measurement.getEnd().truncatedTo(ChronoUnit.DAYS));
+                final LocalDate measurementEnd = measurement.getEnd().toLocalDate();
 
                 BigDecimal currentQuantitySum = BigDecimal.ZERO;
                 for (Price price : pricesForMeasurement) {
                     final LocalDate priceEnd = price.getEnd();
-                    final LocalDate measurementEnd = measurement.getEnd().toLocalDate();
                     final ZonedDateTime qppStart = lastDateTime;
-                    final BigDecimal qppPrice = price.getPrice();
-                    measurement.getStart().withMinute(0).withSecond(0).withNano(0);
-                    final long measurementDays = daysInPeriodInclusive(measurement.getStart(), measurement.getEnd());
 
                     if (priceEnd.compareTo(measurementEnd) >= 0) {
                         final ZonedDateTime qppEnd = measurement.getEnd();
-                        final BigDecimal qppQuantity = measurement.getQuantity().subtract(currentQuantitySum);
+                        final BigDecimal qppQuantity = measurement.getQuantity()
+                                .subtract(currentQuantitySum);
                         final QuantityPricePeriod quantityPricePeriod =
                                 new QuantityPricePeriod(qppQuantity, qppStart, qppEnd, price);
                         quantityPricePeriods.add(quantityPricePeriod);
@@ -125,17 +169,17 @@ public class Main {
                         final ZonedDateTime qppEnd = price.getEnd().atTime(23, 59, 59)
                                 .atZone(ZoneId.of(ZONE_SOFIA));
 
-                        final long qppPeriodDays = daysInPeriodInclusive(lastDateTime, qppEnd);
+                        final long qppPeriodDays = daysInPeriodInclusive(lastDateTime.truncatedTo(ChronoUnit.DAYS),
+                                qppEnd.truncatedTo(ChronoUnit.DAYS));
                         final BigDecimal qppQuantity = BigDecimal.valueOf(qppPeriodDays)
-                                .divide(BigDecimal.valueOf(measurementDays), 2, RoundingMode.HALF_UP)
-                                .multiply(measurement.getQuantity());
+                                .divide(BigDecimal.valueOf(measurementDays), SCALE, ROUNDING_MODE)
+                                .multiply(measurement.getQuantity()).setScale(SCALE, ROUNDING_MODE);
                         final QuantityPricePeriod quantityPricePeriod =
                                 new QuantityPricePeriod(qppQuantity, lastDateTime, qppEnd, price);
                         quantityPricePeriods.add(quantityPricePeriod);
                         lastDateTime = qppEnd.plusSeconds(1);
                         currentQuantitySum = currentQuantitySum.add(qppQuantity);
                     }
-
                 }
             }
 
@@ -246,7 +290,8 @@ public class Main {
 
         @Override
         public String toString() {
-            final DecimalFormat decimalFormat = new DecimalFormat("0.00");
+            final DecimalFormat decimalFormat = new DecimalFormat("0.00",
+                    DecimalFormatSymbols.getInstance(Locale.ROOT));
             return String.format("%s,%s,%s,%s", DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(start),
                     DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(end), decimalFormat.format(quantity),
                     decimalFormat.format(price.getPrice()));
