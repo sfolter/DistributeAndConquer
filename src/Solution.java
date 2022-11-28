@@ -22,9 +22,10 @@ import java.util.Scanner;
  * @author Miroslav Kovachev
  * 24.11.2022
  */
-public class Main {
+public class Solution {
 
     private static final String SEPARATOR = ",";
+    private final static String ZONE_SOFIA = "Europe/Sofia";
 
     public static void main(String[] args) {
         final Scanner scanner = new Scanner(System.in);
@@ -124,7 +125,6 @@ public class Main {
 
     static class ProportionalMeasurementDistributor {
 
-        private final static String ZONE_SOFIA = "Europe/Sofia";
         private static final int SCALE = 2;
         private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_DOWN;
 
@@ -240,8 +240,8 @@ public class Main {
 
         public Measurement(final BigDecimal quantity, final ZonedDateTime start, final ZonedDateTime end) {
             this.quantity = quantity;
-            this.start = start;
-            this.end = end;
+            this.start = start.withZoneSameInstant(ZoneId.of(ZONE_SOFIA));
+            this.end = end.withZoneSameInstant(ZoneId.of(ZONE_SOFIA));
         }
 
         public BigDecimal getQuantity() {
