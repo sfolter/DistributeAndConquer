@@ -126,7 +126,7 @@ public class Solution {
     static class ProportionalMeasurementDistributor {
 
         private static final int SCALE = 2;
-        private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_DOWN;
+        private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
         /**
          * Proportionally distributes the measurements based on the prices.
